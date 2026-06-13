@@ -258,7 +258,7 @@ export async function getDailySummary({
     preferenceRepository.getUserPreferences(targetUserId),
     includeCheckin
       ? measurementRepository
-          .getLatestCheckInMeasurementsOnOrBeforeDate(targetUserId, date)
+          .getCompositeCheckInMeasurements(targetUserId, date)
           .catch((error: unknown) => {
             log(
               'warn',

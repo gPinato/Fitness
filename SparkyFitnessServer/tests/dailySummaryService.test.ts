@@ -29,6 +29,7 @@ vi.mock('../models/measurementRepository.js', () => ({
   default: {
     getWaterIntakeByDate: vi.fn(),
     getLatestCheckInMeasurementsOnOrBeforeDate: vi.fn(),
+    getCompositeCheckInMeasurements: vi.fn(),
     getStepCaloriesForDate: vi.fn(),
   },
 }));
@@ -106,7 +107,7 @@ describe('dailySummaryService', () => {
       water_ml: 0,
     });
     vi.mocked(
-      measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate
+      measurementRepository.getCompositeCheckInMeasurements
     ).mockResolvedValue({
       weight: 80,
       height: 180,
