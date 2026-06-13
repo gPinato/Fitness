@@ -73,7 +73,7 @@ async function performBackup(isManual = false) {
       '-h',
       process.env.SPARKY_FITNESS_DB_HOST,
       '-p',
-      process.env.SPARKY_FITNESS_DB_PORT,
+      process.env.SPARKY_FITNESS_DB_PORT || '5432',
       '-U',
       process.env.SPARKY_FITNESS_DB_USER,
       '-d',
@@ -82,12 +82,15 @@ async function performBackup(isManual = false) {
     // @ts-expect-error TS(2769): No overload matches this call.
     const pgDump = spawn('pg_dump', pgDumpArgs, {
       env: {
-        PGPASSWORD: process.env.SPARKY_FITNESS_DB_PASSWORD,
         ...process.env,
+        PGPASSWORD: process.env.SPARKY_FITNESS_DB_PASSWORD,
       },
     });
     const gzip = zlib.createGzip();
     const output = fs.createWriteStream(dbBackupPath);
+    const stderrChunks: Buffer[] = [];
+    // @ts-expect-error TS(2339): Property 'stderr' does not exist on type 'never'.
+    pgDump.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
     await Promise.all([
       // @ts-expect-error TS(2339): Property 'stdout' does not exist on type 'never'.
       pipeline(pgDump.stdout, gzip, output),
@@ -99,7 +102,10 @@ async function performBackup(isManual = false) {
             // @ts-expect-error TS(2794): Expected 1 arguments, but got 0. Did you forget to... Remove this comment to see the full error message
             resolve();
           } else {
-            reject(new Error(`pg_dump process exited with code ${code}`));
+            const stderr = Buffer.concat(stderrChunks).toString();
+            reject(
+              new Error(`pg_dump process exited with code ${code}: ${stderr}`)
+            );
           }
         });
         // @ts-expect-error TS(2339): Property 'on' does not exist on type 'never'.
@@ -211,23 +217,24 @@ async function performRestore(backupFilePath: any) {
     log('info', 'Closed database connection pool.');
     // Terminate all other connections to the database
     const terminateConnectionsCommand = `SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '${process.env.SPARKY_FITNESS_DB_NAME}' AND pid <> pg_backend_pid();`;
+    const dbPort = process.env.SPARKY_FITNESS_DB_PORT || '5432';
     await executeCommand(
-      `psql -h ${process.env.SPARKY_FITNESS_DB_HOST} -p ${process.env.SPARKY_FITNESS_DB_PORT} -U ${process.env.SPARKY_FITNESS_DB_USER} -d postgres -c "${terminateConnectionsCommand}"`,
+      `psql -h ${process.env.SPARKY_FITNESS_DB_HOST} -p ${dbPort} -U ${process.env.SPARKY_FITNESS_DB_USER} -d postgres -c "${terminateConnectionsCommand}"`,
       {
         env: {
-          PGPASSWORD: process.env.SPARKY_FITNESS_DB_PASSWORD,
           ...process.env,
+          PGPASSWORD: process.env.SPARKY_FITNESS_DB_PASSWORD,
         },
       }
     );
     log('info', 'Terminated active database connections.');
     // Drop and recreate database to ensure a clean state
     const dbEnv = {
-      PGPASSWORD: process.env.SPARKY_FITNESS_DB_PASSWORD,
       ...process.env,
+      PGPASSWORD: process.env.SPARKY_FITNESS_DB_PASSWORD,
     };
-    const dropDbCommand = `dropdb -h ${process.env.SPARKY_FITNESS_DB_HOST} -p ${process.env.SPARKY_FITNESS_DB_PORT} -U ${process.env.SPARKY_FITNESS_DB_USER} ${process.env.SPARKY_FITNESS_DB_NAME}`;
-    const createDbCommand = `createdb -h ${process.env.SPARKY_FITNESS_DB_HOST} -p ${process.env.SPARKY_FITNESS_DB_PORT} -U ${process.env.SPARKY_FITNESS_DB_USER} ${process.env.SPARKY_FITNESS_DB_NAME}`;
+    const dropDbCommand = `dropdb -h ${process.env.SPARKY_FITNESS_DB_HOST} -p ${dbPort} -U ${process.env.SPARKY_FITNESS_DB_USER} ${process.env.SPARKY_FITNESS_DB_NAME}`;
+    const createDbCommand = `createdb -h ${process.env.SPARKY_FITNESS_DB_HOST} -p ${dbPort} -U ${process.env.SPARKY_FITNESS_DB_USER} ${process.env.SPARKY_FITNESS_DB_NAME}`;
     await executeCommand(dropDbCommand, { env: dbEnv });
     await executeCommand(createDbCommand, { env: dbEnv });
     log('info', 'Database wiped and recreated.');
@@ -248,7 +255,7 @@ async function performRestore(backupFilePath: any) {
       '-h',
       process.env.SPARKY_FITNESS_DB_HOST,
       '-p',
-      process.env.SPARKY_FITNESS_DB_PORT,
+      dbPort,
       '-U',
       process.env.SPARKY_FITNESS_DB_USER,
       '-d',
