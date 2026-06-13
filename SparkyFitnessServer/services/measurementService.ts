@@ -155,6 +155,14 @@ const DEFAULT_UNITS_BY_HEALTH_TYPE = {
   // Last types
   cycling_ftp: 'W',
 };
+const CARRYOVER_FIELDS = [
+  'weight',
+  'height',
+  'waist',
+  'neck',
+  'hips',
+  'body_fat_percentage',
+] as const;
 const METER_HEIGHT_UNITS = new Set(['m', 'meter', 'meters', 'metre', 'metres']);
 const CENTIMETER_HEIGHT_UNITS = new Set([
   'cm',
@@ -556,7 +564,7 @@ async function processHealthData(
         case 'body_fat_percentage':
         case 'body_fat': {
           const numericValue = parseFloat(value);
-          if (isNaN(numericValue) || numericValue < 0 || numericValue > 100) {
+          if (isNaN(numericValue) || numericValue <= 0 || numericValue > 100) {
             errors.push({
               error: `Invalid value for ${type}. Must be between 0 and 100.`,
               entry: dataEntry,
@@ -1510,12 +1518,35 @@ async function getCheckInMeasurements(
   date: any
 ) {
   try {
-    const measurement =
-      await measurementRepository.getCheckInMeasurementsByDate(
+    const todayRow = await measurementRepository.getCheckInMeasurementsByDate(
+      targetUserId,
+      date
+    );
+    if (!todayRow) return {};
+
+    const needsCarryover = CARRYOVER_FIELDS.some(
+      (field) => todayRow[field] === null || todayRow[field] === undefined
+    );
+    if (!needsCarryover) return todayRow;
+
+    const previousRow =
+      await measurementRepository.getLatestCheckInMeasurementsOnOrBeforeDate(
         targetUserId,
         date
       );
-    return measurement || {};
+    if (!previousRow || previousRow.entry_date === date) return todayRow;
+
+    const result = { ...todayRow };
+    for (const field of CARRYOVER_FIELDS) {
+      if (
+        (result[field] === null || result[field] === undefined) &&
+        previousRow[field] !== null &&
+        previousRow[field] !== undefined
+      ) {
+        result[field] = previousRow[field];
+      }
+    }
+    return result;
   } catch (error) {
     log(
       'error',

@@ -337,6 +337,30 @@ async function getLatestCheckInMeasurementsOnOrBeforeDate(
     client.release();
   }
 }
+async function getCompositeCheckInMeasurements(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  userId: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  date: any
+) {
+  const client = await getClient(userId);
+  try {
+    const result = await client.query(
+      `SELECT
+        (SELECT weight FROM check_in_measurements WHERE user_id = $1 AND entry_date <= $2 AND weight IS NOT NULL AND weight > 0 ORDER BY entry_date DESC LIMIT 1) AS weight,
+        (SELECT height FROM check_in_measurements WHERE user_id = $1 AND entry_date <= $2 AND height IS NOT NULL AND height > 0 ORDER BY entry_date DESC LIMIT 1) AS height,
+        (SELECT waist FROM check_in_measurements WHERE user_id = $1 AND entry_date <= $2 AND waist IS NOT NULL AND waist > 0 ORDER BY entry_date DESC LIMIT 1) AS waist,
+        (SELECT neck FROM check_in_measurements WHERE user_id = $1 AND entry_date <= $2 AND neck IS NOT NULL AND neck > 0 ORDER BY entry_date DESC LIMIT 1) AS neck,
+        (SELECT hips FROM check_in_measurements WHERE user_id = $1 AND entry_date <= $2 AND hips IS NOT NULL AND hips > 0 ORDER BY entry_date DESC LIMIT 1) AS hips,
+        (SELECT body_fat_percentage FROM check_in_measurements WHERE user_id = $1 AND entry_date <= $2 AND body_fat_percentage IS NOT NULL AND body_fat_percentage > 0 ORDER BY entry_date DESC LIMIT 1) AS body_fat_percentage,
+        (SELECT steps FROM check_in_measurements WHERE user_id = $1 AND entry_date = $2) AS steps`,
+      [userId, date]
+    );
+    return result.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
 async function updateCheckInMeasurements(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   userId: any,
@@ -934,6 +958,7 @@ export { deleteCustomMeasurement };
 export { getCustomMeasurementOwnerId };
 export { getLatestMeasurement };
 export { getLatestCheckInMeasurementsOnOrBeforeDate };
+export { getCompositeCheckInMeasurements };
 export { getMostRecentMeasurement };
 export { getStepCaloriesForDate };
 
@@ -1081,6 +1106,7 @@ export default {
   getCustomMeasurementOwnerId,
   getLatestMeasurement,
   getLatestCheckInMeasurementsOnOrBeforeDate,
+  getCompositeCheckInMeasurements,
   getMostRecentMeasurement,
   getStepCaloriesForDate,
 };
